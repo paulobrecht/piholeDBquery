@@ -33,16 +33,16 @@ midnight = str(int(time.mktime(time.strptime(nowDay + " 00:00:00", "%Y-%m-%d %H:
 
 # query FTL database, do some basic filtering:
 # (ignore rasp-pi localhost queries, uncommon query types, only valid replies, exclude lan queries and PTRs)
-cur.execute('SELECT client, domain, timestamp \
-	         FROM queries \
-	         WHERE timestamp > (?) and \
-                   client != "127.0.0.1" and \
-	               type in (1, 2, 16) and \
-	               reply_type in (3, 4, 5) and \
-	               domain not like "%.lan" and \
-	               client == (?) and \
-	               domain not like "%in-addr.arpa"\
-	         ORDER BY client, timestamp;', (midnight, arg1))
+cur.execute('SELECT a.client, b.name, a.domain, a.timestamp \
+             FROM queries a inner join client_by_id b on \
+             a.client = b.ip\
+             WHERE a.timestamp > (?) and \
+                   a.type in (1, 2, 16) and \
+                   a.reply_type in (3, 4, 5) and \
+                   a.domain not like "%.lan" and \
+                   a.client == (?) and \
+                   a.domain not like "%in-addr.arpa"\
+             ORDER BY client, timestamp;', (midnight, arg1))
 
 
 queries = cur.fetchall()
@@ -50,33 +50,33 @@ queries = cur.fetchall()
 
 # copy query table, adding formatted timestamps
 # con.execute("DROP TABLE myqueries;")
-con.execute("CREATE TEMPORARY TABLE myqueries (client TEXT, domain TEXT, timestamp INT, time_fmt TEXT, time15_fmt TEXT)")
+con.execute("CREATE TEMPORARY TABLE myqueries (ip TEXT, name TEXT, domain TEXT, timestamp INT, time_fmt TEXT, time15_fmt TEXT)")
 
 
 new = []
 for item in queries:
-	timestamp = item[2]
+	timestamp = item[3]
 	timestamp15 = timestamp - (timestamp % (15 * 60))
 	time_fmt = time.strftime("%H:%M", time.localtime(timestamp))
 	time15_fmt = time.strftime("%H:%M", time.localtime(timestamp15))
 	new.append(item + (time_fmt, time15_fmt))
 
 
-con.executemany("insert into myqueries(client, domain, timestamp, time_fmt, time15_fmt) values (?, ?, ?, ?, ?)", new)
+con.executemany("insert into myqueries(ip, name, domain, timestamp, time_fmt, time15_fmt) values (?, ?, ?, ?, ?, ?)", new)
 
 
 # summary data
-cur.execute('SELECT client, time15_fmt AS time, count(*) AS count \
-	         FROM myqueries \
-	         GROUP BY client, time \
-	         ORDER BY client, time;')
+cur.execute('SELECT ip, name, time15_fmt AS time, count(*) AS count \
+             FROM myqueries \
+             GROUP BY ip, name, time \
+             ORDER BY ip, name, time;')
 qtr_hr_list = cur.fetchall()
 
 
-cur.execute('SELECT client, domain, count(*) AS count \
-	         FROM myqueries \
-	         GROUP BY client, domain \
-	         ORDER BY client, count DESC;')
+cur.execute('SELECT ip, name, domain, count(*) AS count \
+             FROM myqueries \
+             GROUP BY ip, name, domain \
+             ORDER BY ip, name, count DESC;')
 top_domains_list = cur.fetchall()
 
 
@@ -86,8 +86,8 @@ con.close()
 # DNS queries per quarter-hour increment for this client
 qtr_hr_dict = {}
 for mytuple in qtr_hr_list:
-	qtr_hr = mytuple[1]
-	count = mytuple[2]
+	qtr_hr = mytuple[2]
+	count = mytuple[3]
 	qtr_hr_dict[qtr_hr] = count
 output = json.dumps(qtr_hr_dict)
 
@@ -95,8 +95,8 @@ output = json.dumps(qtr_hr_dict)
 # top domains today for this client
 top_domains_dict = {}
 for mytuple in top_domains_list:
-	domain = mytuple[1]
-	count = mytuple[2]
+	domain = mytuple[2]
+	count = mytuple[3]
 	top_domains_dict[domain] = count
 output2 = json.dumps(top_domains_dict)
 
@@ -107,3 +107,4 @@ outfile.write("\n\n")
 outfile.write(output2)
 outfile.write("\n")
 outfile.close()
+
