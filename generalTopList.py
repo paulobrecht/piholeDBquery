@@ -42,7 +42,7 @@ def validateInputs(arg1):
         sys.exit("Malformed JSON mapping file. Quitting.")
 
     # Argument 1
-    if arg1u in ["ELH", "CLH", "AMLO", "IELO", "KIDS"]:
+    if arg1u in ["ELH", "CLH", "AMLO", "IELO", "KIDS", "PERSONAL"]:
         thisMap = map[arg1u]
         iplist = thisMap["ip_list"]
     elif "192.168.1." in arg1u:
@@ -53,7 +53,7 @@ def validateInputs(arg1):
         except KeyError as err:
             sys.exit(arg1 + " is not a known device on this network. Make sure you have the name correct and that it ends in .lan.")
     else:
-        sys.exit("Valid values for arg1: 'ELO', 'CLH', 'AMLO', 'IELO', 'KIDS', a 192.168.x.x IP address, or '<device name>.lan'.")
+        sys.exit("Valid values for arg1: 'ELO', 'CLH', 'AMLO', 'IELO', 'KIDS', 'PERSONAL', a 192.168.x.x IP address, or '<device name>.lan'.")
 
     if iplist == "" or iplist == [] or len(iplist) == 0:
         sys.exit("Something went wrong. validateInputs() returned a zero-length object.")
@@ -61,12 +61,7 @@ def validateInputs(arg1):
     return iplist
 
 
-# test for command-line arg
-try:
-    arg1 = sys.argv[1]
-except IndexError:
-    sys.exit("You must supply a device or individual identifier as arg1 to this function.")
-
+arg1 = "PERSONAL"
 ipList = validateInputs(arg1)
 
 
@@ -79,7 +74,7 @@ cur = con.cursor()
 
 
 # time calculations
-now = time.localtime()
+now = time.localtime(1625122800) # July 1, 2021
 nowDay = time.strftime("%Y-%m-%d", now)
 midnight = str(int(time.mktime(time.strptime(nowDay + " 00:00:00", "%Y-%m-%d %H:%M:%S"))))
 
@@ -129,20 +124,6 @@ for item in queries:
 con.executemany("insert into myqueries(ip, name, domain, timestamp, time_fmt, time15_fmt) values (?, ?, ?, ?, ?, ?)", new)
 
 
-# summary data
-cur.execute('SELECT ip, name, time15_fmt AS time, count(*) AS count \
-             FROM myqueries \
-             GROUP BY time, ip, name \
-             ORDER BY time, ip, name;')
-mylist = cur.fetchall()
-df = pd.DataFrame(mylist, columns = ["IP Address", "Device Name", "Time", "# Queries"])
-df['# Queries'] = df['# Queries'].astype(int)
-df['Device Name'] = df['Device Name'].replace(".lan", "")
-df2 = df.pivot_table(index = "Time", columns = "Device Name", values = "# Queries", fill_value = 0)
-print(df2.to_html())
-
-print("\n\n")
-
 cur.execute('SELECT ip, name, domain, count(*) AS count \
              FROM myqueries \
              GROUP BY ip, name, domain \
@@ -153,20 +134,7 @@ xdf = pd.DataFrame(mylist, columns = ["IP Address", "Device Name", "Site", "# Qu
 xdf['# Queries'] = xdf['# Queries'].astype(int)
 xdf['Device Name'] = xdf['Device Name'].replace(".lan", "")
 
-for dn in xdf["Device Name"].unique():
-    xdf2 = xdf[xdf["Device Name"] == dn]
-    print(xdf2.to_html())
-    print("\n\n")
-
+print(xdf)
 
 # close DB connection
 con.close()
-
-
-# # write to file
-# unique filename has ip address and unix timestamp in it
-# ep = str(time.mktime(time.localtime()))
-# outloc = "/tmp/piholeDBquery_" + arg1 + "_" + ep + ".json"
-# outfile = open(outloc, "a")
-# outfile.write(output)
-# outfile.close()
