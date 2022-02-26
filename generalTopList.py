@@ -9,7 +9,7 @@ import os
 import pandas as pd
 
 
-pd.set_option('display.max_rows', 500)
+pd.set_option('display.max_rows', 1000)
 pd.set_option('display.max_columns', 200)
 pd.set_option('display.width', 1000)
 
@@ -91,10 +91,19 @@ for ip in ipList:
                        a.status in (2, 3) and \
                        a.domain not like "%akamaiedge.net" and \
                        a.domain not like "%akadns.net" and \
-                       a.domain not like "%me.com" and \
                        a.domain not like "%akamai.net" and \
+                       a.domain not like "%ubuntu.com" and \
+                       a.domain not like "%google.com" and \
+                       a.domain not like "%gstatic%" and \
+                       a.domain not like "%.firefox%" and \
+                       a.domain not like "%googleapis%" and \
+                       a.domain not like "%mozilla%" and \
+                       a.domain not like "%example.org" and \
+                       a.domain not like "%googleusercontent.com" and \
+                       a.domain not like "%aaplimg.com" and \
                        a.domain not like "%me.com" and \
-                       a.domain not like "%.apple%" and \
+                       a.domain not like "%apple%" and \
+                       a.domain not like "%me.com" and \
                        a.domain not like "%icloud%" and \
                        a.client == (?) and \
                        a.domain not like "%in-addr.arpa"\

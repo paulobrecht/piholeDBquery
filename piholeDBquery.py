@@ -6,13 +6,20 @@ import json
 import sys
 import json
 import os
+import subprocess
 import pandas as pd
+import matplotlib
 
+matplotlib.use('Agg')
 
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 200)
 pd.set_option('display.width', 1000)
+pd.set_option('colheader_justify', 'center')
 
+# - - - - - - - #
+#   functions   #
+# - - - - - - - #
 
 def readJSON(maploc = os.environ['HOME'] + "/Scripts/piholeDBquery/mapfile.json"):
     """readJSON(): Read JSON file
@@ -61,6 +68,25 @@ def validateInputs(arg1):
     return iplist
 
 
+
+
+
+def myStyler(styler):
+    """myStyler(): Sets custom attributes and styles, used with pandas.dataframe.style
+
+    Sets custom attributes and styles, used with pandas.dataframe.style, specfically style.pipe(myStyler)
+    """
+    styler.set_caption(caption)
+    styler.set_uuid(uuid)
+    return styler
+
+
+
+
+# - - - - - - - #
+#      body     #
+# - - - - - - - #
+
 # test for command-line arg
 try:
     arg1 = sys.argv[1]
@@ -81,6 +107,7 @@ cur = con.cursor()
 # time calculations
 now = time.localtime()
 nowDay = time.strftime("%Y-%m-%d", now)
+nowHMS = time.strftime("%H:%M:%S", now)
 midnight = str(int(time.mktime(time.strptime(nowDay + " 00:00:00", "%Y-%m-%d %H:%M:%S"))))
 
 
@@ -96,13 +123,20 @@ for ip in ipList:
                        a.status in (2, 3) and \
                        a.domain not like "%akamaiedge.net" and \
                        a.domain not like "%akadns.net" and \
-                       a.domain not like "%me.com" and \
                        a.domain not like "%akamai.net" and \
+                       a.domain not like "%ubuntu.com" and \
+                       a.domain not like "%google.com" and \
+                       a.domain not like "%gstatic%" and \
+                       a.domain not like "%.firefox%" and \
+                       a.domain not like "%googleapis%" and \
+                       a.domain not like "%mozilla%" and \
+                       a.domain not like "%example.org" and \
+                       a.domain not like "%googleusercontent.com" and \
+                       a.domain not like "%aaplimg.com" and \
+                       a.domain not like "%apple%" and \
                        a.domain not like "%me.com" and \
-                       a.domain not like "%.apple%" and \
                        a.domain not like "%icloud%" and \
-                       a.client == (?) and \
-                       a.domain not like "%in-addr.arpa"\
+                       a.client == (?) \
                  ORDER BY a.client, a.timestamp;', (midnight, ip))
     tmp = cur.fetchall()
     queries = queries + tmp
@@ -129,44 +163,95 @@ for item in queries:
 con.executemany("insert into myqueries(ip, name, domain, timestamp, time_fmt, time15_fmt) values (?, ?, ?, ?, ?, ?)", new)
 
 
-# summary data
+# ------------------------
+# Time increment table
+# ------------------------
 cur.execute('SELECT ip, name, time15_fmt AS time, count(*) AS count \
              FROM myqueries \
              GROUP BY time, ip, name \
              ORDER BY time, ip, name;')
 mylist = cur.fetchall()
 df = pd.DataFrame(mylist, columns = ["IP Address", "Device Name", "Time", "# Queries"])
-df['# Queries'] = df['# Queries'].astype(int)
-df['Device Name'] = df['Device Name'].replace(".lan", "")
+df = df.replace(to_replace={"Device Name":r'^(.*)\.lan$'}, value={"Device Name":r'\1'}, regex=True)
 df2 = df.pivot_table(index = "Time", columns = "Device Name", values = "# Queries", fill_value = 0)
-print(df2.to_html())
+df2.columns.name = ""
+df2.index.name=None
+caption = "Today's query count by device" # used in styler
+uuid = "by15" # used in styler
+groomed = df2.style.pipe(myStyler)
+out15 = groomed.render(render_links = False)
 
-print("\n\n")
-
+# ------------------------
+# Site hierarchy by device
+# ------------------------
 cur.execute('SELECT ip, name, domain, count(*) AS count \
              FROM myqueries \
              GROUP BY ip, name, domain \
-             HAVING count > 2 \
+             HAVING count > 1 \
              ORDER BY ip, name, count DESC;')
 mylist = cur.fetchall()
 xdf = pd.DataFrame(mylist, columns = ["IP Address", "Device Name", "Site", "# Queries"])
+xdf = xdf.replace(to_replace={"Device Name":r'^(.*)\.lan$'}, value={"Device Name":r'\1'}, regex=True)
 xdf['# Queries'] = xdf['# Queries'].astype(int)
-xdf['Device Name'] = xdf['Device Name'].replace(".lan", "")
-
-for dn in xdf["Device Name"].unique():
-    xdf2 = xdf[xdf["Device Name"] == dn]
-    print(xdf2.to_html())
-    print("\n\n")
-
 
 # close DB connection
 con.close()
 
 
-# # write to file
-# unique filename has ip address and unix timestamp in it
-# ep = str(time.mktime(time.localtime()))
-# outloc = "/tmp/piholeDBquery_" + arg1 + "_" + ep + ".json"
-# outfile = open(outloc, "a")
-# outfile.write(output)
-# outfile.close()
+
+# write output to html file
+# first read HTML templates
+top = open(os.environ["HOME"] + "/Scripts/piholeDBquery/top.html")
+top_html = top.read()
+top.close()
+
+bottom = open(os.environ["HOME"] + "/Scripts/piholeDBquery/bottom.html")
+bottom_html = bottom.read()
+bottom.close()
+
+# unique temp filename has arg1 and unix timestamp in it for uniqueness
+ep = str(time.mktime(time.localtime()))
+outloc = "/tmp/piholeDBquery_" + arg1 + "_" + ep + ".html"
+
+outfile = open(outloc, "a")
+outfile.write(top_html) # write HTML head, etc
+
+# first table (15-min increments for all devices)
+outfile.write(out15)
+
+# now one table of ranked activity per device
+thelist = xdf["Device Name"].unique()
+for dn in thelist:
+    xdf2 = xdf[xdf["Device Name"] == dn].copy(deep = True)
+    firstIndex = xdf2.index[0]
+    thisIP = xdf2["IP Address"][firstIndex]
+    thisDev = xdf2["Device Name"][firstIndex]
+    xdf2.drop(["IP Address", "Device Name"], axis = 1, inplace = True)
+    caption = thisDev + " (" + thisIP + ")" # used in styler
+    uuid = "freq" # used in styler
+    groomed = xdf2.style.pipe(myStyler)
+    thisout = groomed.hide_index().render(render_links = False)
+    outfile.write(thisout)
+
+outfile.write(bottom_html) # write HTML bottom
+outfile.close()
+print(time.asctime(time.localtime()) + ": finished creating html file")
+
+# send email
+header1 = 'Content-Type: text/html; charset="UTF-8"'
+header2 = '"MIME-Version: 1.0"'
+emailSubj = "Today's DNS activity for " + arg1.upper() + " as of " + nowHMS
+recipient = os.environ['PIHOLE_DB_QUERY_EMAIL_RECIPIENT']
+
+body = subprocess.Popen(('cat', outloc), stdout=subprocess.PIPE)
+output = subprocess.run(['mail', '-a', header1, '-a', header2, '-s', emailSubj, recipient], stdin=body.stdout, capture_output = True)
+print(time.asctime(time.localtime()) + ": sent email (" + emailSubj + ")")
+
+
+# return subprocess.run() output to Shortcut if it's not a clean exit
+shortcutsReturn = output.stdout.decode("utf-8")
+if shortcutsReturn != "":
+    print(shortcutsReturn)
+
+# cleanup
+# os.remove(outloc)
