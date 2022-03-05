@@ -4,7 +4,6 @@ import sqlite3
 import time
 import json
 import sys
-import json
 import os
 import subprocess
 import pandas as pd
