@@ -92,6 +92,8 @@ if stop.returncode != 0:
 con = sqlite3.connect('/etc/pihole/gravity.db')
 cur = con.cursor()
 
+
+
 # iterate over the four kids
 for key in deviceMap.keys():
     # get device IDs and group IDs for this kid
@@ -103,6 +105,15 @@ for key in deviceMap.keys():
         cur.execute("DELETE FROM client_by_group WHERE client_id = (?);", (deviceID,)) # delete current entries for this device
         for groupID in piholeGroupIDs:
             cur.execute("INSERT INTO client_by_group (client_id, group_id) VALUES (?, ?);", (deviceID, groupID)) # add a row for each relevant group for this device
+
+# iterate over the groups
+# exclude kill, amazon because reasons.
+# Exclude TikTok_E because crontab does it at 10. This runs at 9.
+groups = [0, 2, 5, 6, 7, 9, 10, 11]
+for groupID in groups:
+    cur.execute("update 'group' set enabled = 1 where id = (?);", (groupID))
+
+
 
 # commit and close DB connection
 con.commit()
